@@ -1,0 +1,32 @@
+services:
+  backend:
+    build: .
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: sqlite:///./data/app.db
+      QDRANT_PATH: ./data/qdrant
+      DOCUMENTS_DIR: data/documents
+      CORS_ORIGINS: http://localhost:5173,http://localhost:8080
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+        VITE_API_KEY: ${ADMIN_API_KEY}
+    ports:
+      - "8080:80"
+    depends_on:
+      backend:
+        condition: service_healthy
