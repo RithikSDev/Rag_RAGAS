@@ -16,8 +16,12 @@ COPY app app
 COPY evaluation evaluation
 COPY api.py main.py ./
 
+# Seed documents baked into the image so a fresh volume gets bootstrap-ingested
+# on first start (Docker copies an image directory's contents into an empty
+# named volume mounted over it) - matches local dev's out-of-the-box behavior.
+COPY data/documents data/documents
+
 RUN useradd --create-home appuser \
-    && mkdir -p /app/data/documents \
     && chown -R appuser:appuser /app
 USER appuser
 

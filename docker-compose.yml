@@ -9,7 +9,7 @@ services:
       DOCUMENTS_DIR: data/documents
       CORS_ORIGINS: http://localhost:5173,http://localhost:8080
     volumes:
-      - ./data:/app/data
+      - data:/app/data
     ports:
       - "8000:8000"
     healthcheck:
@@ -30,3 +30,12 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+volumes:
+  # A named volume, not a host bind mount: SQLite's file-locking semantics
+  # don't translate reliably across Docker Desktop's bind-mount filesystem
+  # layer on Windows (observed as a bare "disk I/O error" on WAL/pragma
+  # calls). A named volume is backed by the daemon's own native filesystem
+  # and doesn't have that problem - the standard recommendation for a
+  # database file, as opposed to config/source bind mounts.
+  data:

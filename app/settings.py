@@ -1,6 +1,5 @@
 from functools import lru_cache
 
-from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,7 +13,12 @@ class Settings(BaseSettings):
     qdrant_path: str = "./data/qdrant"
     documents_dir: str = "data/documents"
 
-    cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    # Deliberately a plain str, not list[str]: pydantic-settings JSON-decodes
+    # env values for complex (list/dict) fields *before* any field validator
+    # runs, so a plain comma-separated env var ("a,b") fails to parse as JSON
+    # and raises SettingsError before a "before" validator ever sees it. A str
+    # field skips that JSON-decode path entirely - split via the property below.
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     admin_api_key: str
     viewer_api_key: str
@@ -24,12 +28,9 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_format: str = "json"
 
-    @field_validator("cors_origins", mode="before")
-    @classmethod
-    def _split_csv(cls, value):
-        if isinstance(value, str):
-            return [origin.strip() for origin in value.split(",") if origin.strip()]
-        return value
+    @property
+    def cors_origins_list(self) -> list[str]:
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
 
 @lru_cache

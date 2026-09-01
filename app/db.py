@@ -1,8 +1,12 @@
+import logging
+import sqlite3
 from pathlib import Path
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import StaticPool
+
+logger = logging.getLogger("app.db")
 
 
 def build_engine(database_url: str):
@@ -29,7 +33,24 @@ def build_engine(database_url: str):
         @event.listens_for(engine, "connect")
         def _set_sqlite_pragma(dbapi_connection, _):
             cursor = dbapi_connection.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL")
+
+            try:
+                # WAL needs shared-memory-mapping support from the filesystem,
+                # which several Docker bind-mount backends (observed: Docker
+                # Desktop on Windows) don't provide - fails as a plain "disk
+                # I/O error" with no other symptom. Best-effort: fall back to
+                # the default journal mode rather than crash the app over it.
+                # Note: this executes against the raw DBAPI cursor (an
+                # sqlalchemy "connect" event, not a wrapped Connection), so
+                # the exception raised here is the native sqlite3 error, not
+                # sqlalchemy.exc.OperationalError.
+                cursor.execute("PRAGMA journal_mode=WAL")
+            except sqlite3.OperationalError:
+                logger.warning(
+                    "sqlite WAL mode unavailable on this filesystem, "
+                    "falling back to the default journal mode"
+                )
+
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
 
