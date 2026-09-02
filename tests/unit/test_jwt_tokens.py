@@ -33,7 +33,18 @@ def test_decode_rejects_expired_token():
 
 def test_decode_rejects_tampered_token():
     token = create_access_token("user-1", "viewer", secret="s3cret", algorithm="HS256", expire_minutes=60)
-    tampered = token[:-1] + ("A" if token[-1] != "A" else "B")
+
+    # Flip the *first* character of the signature segment, not the last of
+    # the whole token: base64's final group can leave trailing bits that
+    # decoders ignore, so a flip there is sometimes a no-op on the decoded
+    # signature bytes (observed flaky in CI - ~1-in-4 tokens, depending on
+    # the exact byte length of that run's HMAC output). The first character
+    # of a base64 group always encodes significant bits, so this reliably
+    # changes the decoded signature every time.
+    header, payload, signature = token.split(".")
+    first_char = signature[0]
+    flipped_char = "A" if first_char != "A" else "B"
+    tampered = f"{header}.{payload}.{flipped_char}{signature[1:]}"
 
     with pytest.raises(jwt.PyJWTError):
         decode_access_token(tampered, secret="s3cret", algorithm="HS256")
