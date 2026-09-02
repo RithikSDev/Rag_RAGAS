@@ -4,6 +4,8 @@ A self-hosted platform for building, debugging, and evaluating a Retrieval-Augme
 
 [![CI](https://github.com/RithikSDev/Rag_RAGAS/actions/workflows/ci.yml/badge.svg)](https://github.com/RithikSDev/Rag_RAGAS/actions/workflows/ci.yml)
 
+![RAGAS LAB overview — pipeline health, RAGAS scores, and the RAG pipeline diagram](docs/screenshots/overview.png)
+
 ## What it does
 
 - **Ingests real documents** — PDF (with OCR fallback for scanned pages and embedded images), PPTX (text, tables, speaker notes, embedded-image OCR), and plain text — chunks and embeds them into a Qdrant vector store.
@@ -14,9 +16,6 @@ A self-hosted platform for building, debugging, and evaluating a Retrieval-Augme
 - **Runs multi-user with real auth** — JWT-based login layered on top of API-key auth, with an admin-managed user list.
 
 ## Screenshots
-
-**Overview** — pipeline health, RAGAS scores at a glance, and the full ingestion → retrieval → generation flow.
-![Overview](docs/screenshots/overview.png)
 
 **Knowledge Base** — every ingested document with its real extracted chunks.
 ![Knowledge Base](docs/screenshots/knowledge-base.png)
