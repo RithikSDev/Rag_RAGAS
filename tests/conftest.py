@@ -1,4 +1,5 @@
 import os
+import time
 
 # Must be set before `api` (or anything importing app.settings) is first
 # imported anywhere in the pytest session, since api.py reads settings once
@@ -24,7 +25,13 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
     monkeypatch.setenv("ADMIN_API_KEY", "test-admin-key")
     monkeypatch.setenv("VIEWER_API_KEY", "test-viewer-key")
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+    # A real (if temp) file, not :memory: - :memory: forces StaticPool (one
+    # shared raw connection for the whole process), which conflicts once a
+    # background task (see EvaluationService._execute) opens its own session
+    # concurrently with a request-scoped one ("cannot commit - no transaction
+    # is active"). A temp file uses normal per-checkout pooled connections,
+    # same as production, and avoids that whole class of issue.
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'test.db'}")
     monkeypatch.setenv("QDRANT_PATH", str(tmp_path / "qdrant"))
     monkeypatch.setenv("DOCUMENTS_DIR", str(tmp_path / "documents"))
     (tmp_path / "documents").mkdir()
@@ -64,6 +71,29 @@ def viewer_headers():
 def seeded_api_key_hash():
     """Exposed for tests that want to assert on the hashing scheme directly."""
     return hash_key
+
+
+@pytest.fixture
+def wait_for_run():
+    """/evaluate now starts a background task and returns immediately - tests
+    poll the progress endpoint instead of asserting on a synchronous body.
+    Fakes are fast, so this should resolve in well under a second."""
+
+    def _wait(client, headers, run_id, timeout=10.0, interval=0.02):
+        deadline = time.monotonic() + timeout
+
+        while time.monotonic() < deadline:
+            response = client.get(f"/evaluate/{run_id}/progress", headers=headers)
+            body = response.json()
+
+            if body["status"] != "running":
+                return body
+
+            time.sleep(interval)
+
+        raise TimeoutError(f"run {run_id} did not complete within {timeout}s")
+
+    return _wait
 
 
 @pytest.fixture

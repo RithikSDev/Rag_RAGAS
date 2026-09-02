@@ -57,6 +57,14 @@ class EvaluationRun(Base):
     metrics_summary: Mapped[dict] = mapped_column(JSON, default=dict)
     triggered_by: Mapped[str] = mapped_column(String(64))
 
+    status: Mapped[str] = mapped_column(String(16), default="running")
+    total_questions: Mapped[int] = mapped_column(Integer, default=0)
+    completed_questions: Mapped[int] = mapped_column(Integer, default=0)
+    current_question: Mapped[str | None] = mapped_column(Text, nullable=True)
+    label: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     results: Mapped[list["EvaluationResult"]] = relationship(
         back_populates="run", cascade="all, delete-orphan"
     )

@@ -34,6 +34,7 @@ from app.schemas import (
     EvalQuestionUpdate,
     Question,
     RetrievalDebugRequest,
+    RunLabelUpdate,
     SettingsUpdate,
     ThresholdsUpdate,
     validate_settings_merge,
@@ -210,14 +211,63 @@ def ragas_runs(
     return {"runs": evaluation.list_runs()}
 
 
-@app.post("/evaluate")
+@app.get("/ragas/runs/{run_id}")
+def ragas_run_detail(
+    run_id: str,
+    evaluation: EvaluationService = Depends(get_evaluation_service),
+    principal=Depends(require_role("viewer", "admin")),
+):
+    run = evaluation.get_run(run_id)
+
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+
+    return run
+
+
+@app.patch("/ragas/runs/{run_id}")
+@limiter.limit("20/minute")
+def label_run(
+    request: Request,
+    run_id: str,
+    payload: RunLabelUpdate,
+    evaluation: EvaluationService = Depends(get_evaluation_service),
+    principal=Depends(require_role("admin")),
+):
+    run = evaluation.set_label(run_id, payload.label, payload.notes)
+
+    if run is None:
+        raise HTTPException(status_code=404, detail="run not found")
+
+    return run
+
+
+@app.post("/evaluate", status_code=202)
 @limiter.limit("2/minute")
-def evaluate(
+async def evaluate(
     request: Request,
     evaluation: EvaluationService = Depends(get_evaluation_service),
     principal=Depends(require_role("admin")),
 ):
-    return evaluation.run_and_record(caller=principal.label)
+    # Must be async (not run_in_threadpool'd like a sync def route) so that
+    # start_run()'s asyncio.create_task() has an actual running loop to
+    # attach the background evaluation task to.
+    run_id = evaluation.start_run(caller=principal.label)
+    return {"run_id": run_id, "status": "running"}
+
+
+@app.get("/evaluate/{run_id}/progress")
+def evaluate_progress(
+    run_id: str,
+    evaluation: EvaluationService = Depends(get_evaluation_service),
+    principal=Depends(require_role("viewer", "admin")),
+):
+    progress = evaluation.progress(run_id)
+
+    if progress is None:
+        raise HTTPException(status_code=404, detail="run not found")
+
+    return progress
 
 
 @app.get("/settings")

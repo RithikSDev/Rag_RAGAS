@@ -4,7 +4,7 @@ from pathlib import Path
 from sqlalchemy.orm import Session
 
 from app.config import PipelineConfig
-from app.db import Base, build_engine, build_session_factory
+from app.db import Base, build_engine, build_session_factory, ensure_columns
 from app.db_models import PipelineConfigState
 from app.generation.generator import Generator
 from app.ingestion.embedder import Embedder
@@ -43,6 +43,7 @@ def _load_or_create_config(db: Session) -> PipelineConfig:
 def build_app_state(settings: Settings) -> AppState:
     engine = build_engine(settings.database_url)
     Base.metadata.create_all(engine)
+    ensure_columns(engine)
     session_factory = build_session_factory(engine)
 
     with session_factory() as db:

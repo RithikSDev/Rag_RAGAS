@@ -168,6 +168,11 @@ class EvalQuestionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RunLabelUpdate(BaseModel):
+    label: str | None = None
+    notes: str | None = None
+
+
 class DocumentOut(BaseModel):
     name: str
     chunks: int

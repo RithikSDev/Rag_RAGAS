@@ -63,3 +63,36 @@ class Base(DeclarativeBase):
 
 def build_session_factory(engine):
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+# SQLite-only shim: Base.metadata.create_all() only creates *missing* tables,
+# it never alters an existing one. When a model gains new columns, an already
+# -running deployment's table doesn't get them, and the app breaks against its
+# own DB. This is a small, targeted patch - not a real migration framework;
+# revisit with Alembic if the schema keeps growing at this rate.
+_NEW_EVALUATION_RUN_COLUMNS = {
+    "status": "TEXT DEFAULT 'completed'",  # backfill: pre-existing rows really are completed
+    "total_questions": "INTEGER DEFAULT 0",
+    "completed_questions": "INTEGER DEFAULT 0",
+    "current_question": "TEXT",
+    "label": "TEXT",
+    "notes": "TEXT",
+    "error_message": "TEXT",
+}
+
+
+def ensure_columns(engine) -> None:
+    if engine.dialect.name != "sqlite":
+        return
+
+    with engine.connect() as conn:
+        existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(evaluation_runs)")}
+
+        if not existing:
+            return  # table doesn't exist yet - create_all() will make it correctly
+
+        for column, ddl_type in _NEW_EVALUATION_RUN_COLUMNS.items():
+            if column not in existing:
+                conn.exec_driver_sql(f"ALTER TABLE evaluation_runs ADD COLUMN {column} {ddl_type}")
+
+        conn.commit()

@@ -14,6 +14,9 @@ class FakeMetric:
     def score(self, **kwargs):
         return FakeResult(value=self.value)
 
+    async def ascore(self, **kwargs):
+        return FakeResult(value=self.value)
+
 
 def fake_metrics_factory(model: str = None) -> dict:
     """Stands in for evaluation.metrics.build_metrics - no real Anthropic

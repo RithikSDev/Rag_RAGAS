@@ -90,7 +90,14 @@ def get_evaluation_service(
     app_state: AppState = Depends(get_app_state),
     dataset_service: DatasetService = Depends(get_dataset_service),
 ) -> EvaluationService:
-    return EvaluationService(db, app_state.pipeline, app_state.pipeline_config, dataset_service)
+    return EvaluationService(
+        db,
+        app_state.pipeline,
+        app_state.pipeline_config,
+        dataset_service,
+        app_state.session_factory,
+        app_state.running_tasks,
+    )
 
 
 def get_threshold_service(db: Session = Depends(get_db_session)) -> ThresholdService:
