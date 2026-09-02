@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 
 from pydantic import BaseModel, field_validator, model_validator
@@ -188,5 +189,73 @@ class PipelineConfigOut(BaseModel):
     chunking_strategy: str
     semantic_threshold: float
     top_k: int
+
+    model_config = {"from_attributes": True}
+
+
+USERNAME_RE = "^[a-zA-Z0-9_.-]{3,32}$"
+USER_ROLES = ("admin", "viewer")
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class UserCreate(BaseModel):
+    username: str
+    password: str
+    role: str
+
+    @field_validator("username")
+    @classmethod
+    def _valid_username(cls, value):
+        if not re.match(USERNAME_RE, value):
+            raise ValueError("username must be 3-32 characters: letters, numbers, . _ -")
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def _valid_password(cls, value):
+        if len(value) < 8:
+            raise ValueError("password must be at least 8 characters")
+        return value
+
+    @field_validator("role")
+    @classmethod
+    def _valid_role(cls, value):
+        if value not in USER_ROLES:
+            raise ValueError(f"role must be one of {USER_ROLES}")
+        return value
+
+
+class UserUpdate(BaseModel):
+    role: str | None = None
+    is_active: bool | None = None
+    password: str | None = None
+
+    @field_validator("role")
+    @classmethod
+    def _valid_role(cls, value):
+        if value is not None and value not in USER_ROLES:
+            raise ValueError(f"role must be one of {USER_ROLES}")
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def _valid_password(cls, value):
+        if value is not None and len(value) < 8:
+            raise ValueError("password must be at least 8 characters")
+        return value
+
+
+class UserOut(BaseModel):
+    id: str
+    username: str
+    role: str
+    is_active: bool
+    created_at: datetime
+    created_by: str
+    last_login_at: datetime | None
 
     model_config = {"from_attributes": True}

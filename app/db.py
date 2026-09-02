@@ -70,14 +70,20 @@ def build_session_factory(engine):
 # -running deployment's table doesn't get them, and the app breaks against its
 # own DB. This is a small, targeted patch - not a real migration framework;
 # revisit with Alembic if the schema keeps growing at this rate.
-_NEW_EVALUATION_RUN_COLUMNS = {
-    "status": "TEXT DEFAULT 'completed'",  # backfill: pre-existing rows really are completed
-    "total_questions": "INTEGER DEFAULT 0",
-    "completed_questions": "INTEGER DEFAULT 0",
-    "current_question": "TEXT",
-    "label": "TEXT",
-    "notes": "TEXT",
-    "error_message": "TEXT",
+_NEW_COLUMNS_BY_TABLE = {
+    "evaluation_runs": {
+        "status": "TEXT DEFAULT 'completed'",  # backfill: pre-existing rows really are completed
+        "total_questions": "INTEGER DEFAULT 0",
+        "completed_questions": "INTEGER DEFAULT 0",
+        "current_question": "TEXT",
+        "label": "TEXT",
+        "notes": "TEXT",
+        "error_message": "TEXT",
+    },
+    "query_log": {
+        "retrieval_ms": "REAL",
+        "generation_ms": "REAL",
+    },
 }
 
 
@@ -86,13 +92,14 @@ def ensure_columns(engine) -> None:
         return
 
     with engine.connect() as conn:
-        existing = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(evaluation_runs)")}
+        for table, new_columns in _NEW_COLUMNS_BY_TABLE.items():
+            existing = {row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")}
 
-        if not existing:
-            return  # table doesn't exist yet - create_all() will make it correctly
+            if not existing:
+                continue  # table doesn't exist yet - create_all() will make it correctly
 
-        for column, ddl_type in _NEW_EVALUATION_RUN_COLUMNS.items():
-            if column not in existing:
-                conn.exec_driver_sql(f"ALTER TABLE evaluation_runs ADD COLUMN {column} {ddl_type}")
+            for column, ddl_type in new_columns.items():
+                if column not in existing:
+                    conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}")
 
         conn.commit()

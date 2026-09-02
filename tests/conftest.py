@@ -7,6 +7,7 @@ import time
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
 os.environ.setdefault("ADMIN_API_KEY", "test-admin-key")
 os.environ.setdefault("VIEWER_API_KEY", "test-viewer-key")
+os.environ.setdefault("JWT_SECRET", "test-jwt-secret")
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
 import pytest
@@ -25,6 +26,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
     monkeypatch.setenv("ADMIN_API_KEY", "test-admin-key")
     monkeypatch.setenv("VIEWER_API_KEY", "test-viewer-key")
+    monkeypatch.setenv("JWT_SECRET", "test-jwt-secret")
+    monkeypatch.setenv("INITIAL_ADMIN_PASSWORD", "test-admin-password123")
     # A real (if temp) file, not :memory: - :memory: forces StaticPool (one
     # shared raw connection for the whole process), which conflicts once a
     # background task (see EvaluationService._execute) opens its own session
@@ -65,6 +68,17 @@ def admin_headers():
 @pytest.fixture
 def viewer_headers():
     return {"X-API-Key": "test-viewer-key"}
+
+
+@pytest.fixture
+def admin_jwt_headers(client):
+    """Authorization: Bearer headers for the seeded initial admin user - the
+    real /auth/login path, as opposed to the admin_headers API-key fixture."""
+    response = client.post(
+        "/auth/login", json={"username": "admin", "password": "test-admin-password123"}
+    )
+    token = response.json()["access_token"]
+    return {"Authorization": f"Bearer {token}"}
 
 
 @pytest.fixture
@@ -110,3 +124,27 @@ def valid_pdf_bytes() -> bytes:
     doc.close()
 
     return data
+
+
+@pytest.fixture
+def valid_pptx_bytes() -> bytes:
+    """A genuinely parseable single-slide PPTX, generated on the fly with the
+    same python-pptx the app uses to read uploads."""
+    import io
+
+    from pptx import Presentation
+
+    presentation = Presentation()
+    slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+    textbox = slide.shapes.add_textbox(0, 0, presentation.slide_width, presentation.slide_height)
+    textbox.text_frame.text = "Employees receive 20 days of annual leave per year."
+
+    buffer = io.BytesIO()
+    presentation.save(buffer)
+
+    return buffer.getvalue()
+
+
+@pytest.fixture
+def valid_txt_bytes() -> bytes:
+    return "Employees receive 20 days of annual leave per year.".encode("utf-8")

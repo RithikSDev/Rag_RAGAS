@@ -31,7 +31,42 @@ def test_upload_valid_pdf_succeeds_and_appears_in_list(client, admin_headers, va
     assert "handbook.pdf" in names
 
 
-def test_upload_rejects_non_pdf_extension(client, admin_headers, valid_pdf_bytes):
+def test_upload_valid_pptx_succeeds_and_appears_in_list(client, admin_headers, valid_pptx_bytes):
+    content_type = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    upload_response = client.post(
+        "/documents",
+        headers=admin_headers,
+        files={"file": ("deck.pptx", valid_pptx_bytes, content_type)},
+    )
+
+    assert upload_response.status_code == 200
+    body = upload_response.json()
+    assert body["name"] == "deck.pptx"
+    assert body["chunks"] >= 1
+
+    list_response = client.get("/documents", headers=admin_headers)
+    names = [doc["name"] for doc in list_response.json()["documents"]]
+    assert "deck.pptx" in names
+
+
+def test_upload_valid_txt_succeeds_and_appears_in_list(client, admin_headers, valid_txt_bytes):
+    upload_response = client.post(
+        "/documents",
+        headers=admin_headers,
+        files={"file": ("policy.txt", valid_txt_bytes, "text/plain")},
+    )
+
+    assert upload_response.status_code == 200
+    body = upload_response.json()
+    assert body["name"] == "policy.txt"
+    assert body["chunks"] >= 1
+
+    list_response = client.get("/documents", headers=admin_headers)
+    names = [doc["name"] for doc in list_response.json()["documents"]]
+    assert "policy.txt" in names
+
+
+def test_upload_rejects_unsupported_extension(client, admin_headers, valid_pdf_bytes):
     response = client.post(
         "/documents",
         headers=admin_headers,

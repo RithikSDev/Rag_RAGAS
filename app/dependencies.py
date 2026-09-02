@@ -9,6 +9,7 @@ from app.services.evaluation_service import EvaluationService
 from app.services.hybrid_retrieval_service import HybridRetrievalService
 from app.services.ingestion_service import IngestionService
 from app.services.threshold_service import ThresholdService
+from app.services.user_service import UserService
 from app.settings import Settings, get_settings_cached
 from app.state import AppState
 
@@ -51,9 +52,16 @@ def get_pipeline_config(app_state: AppState = Depends(get_app_state)):
 
 def get_principal(
     x_api_key: str | None = Header(None, alias="X-API-Key"),
+    authorization: str | None = Header(None),
     db: Session = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
 ) -> Principal:
-    return resolve_principal(db, x_api_key)
+    bearer_token = None
+
+    if authorization and authorization.lower().startswith("bearer "):
+        bearer_token = authorization[len("bearer ") :].strip()
+
+    return resolve_principal(db, x_api_key, bearer_token, settings.jwt_secret, settings.jwt_algorithm)
 
 
 def require_role(*allowed_roles: str):
@@ -108,3 +116,7 @@ def get_hybrid_retrieval_service(
     app_state: AppState = Depends(get_app_state),
 ) -> HybridRetrievalService:
     return HybridRetrievalService(app_state.retriever, app_state.vector_store, app_state.reranker)
+
+
+def get_user_service(db: Session = Depends(get_db_session)) -> UserService:
+    return UserService(db)

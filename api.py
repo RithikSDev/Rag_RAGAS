@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.bootstrap import build_app_state
@@ -23,6 +23,7 @@ from app.dependencies import (
     get_principal,
     get_settings,
     get_threshold_service,
+    get_user_service,
     get_vector_store,
     require_role,
 )
@@ -32,19 +33,24 @@ from app.observability.middleware import RequestContextMiddleware
 from app.schemas import (
     EvalQuestionCreate,
     EvalQuestionUpdate,
+    LoginRequest,
     Question,
     RetrievalDebugRequest,
     RunLabelUpdate,
     SettingsUpdate,
     ThresholdsUpdate,
+    UserCreate,
+    UserUpdate,
     validate_settings_merge,
 )
+from app.security.jwt_tokens import create_access_token
 from app.security.rate_limit import limiter
 from app.services.dataset_service import DatasetService, parse_import_rows
 from app.services.evaluation_service import EvaluationService
 from app.services.hybrid_retrieval_service import HybridRetrievalService
 from app.services.ingestion_service import IngestionService
 from app.services.threshold_service import ThresholdService
+from app.services.user_service import UserService
 from app.settings import Settings, get_settings_cached
 
 settings = get_settings_cached()
@@ -78,8 +84,8 @@ app.add_middleware(RequestContextMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins_list,
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "X-API-Key"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Content-Type", "X-API-Key", "Authorization"],
 )
 
 
@@ -105,10 +111,153 @@ def health(db: Session = Depends(get_db_session), vector_store=Depends(get_vecto
     return {"status": "ok"}
 
 
+def _user_out(user) -> dict:
+    return {
+        "id": user.id,
+        "username": user.username,
+        "role": user.role,
+        "is_active": user.is_active,
+        "created_at": user.created_at.isoformat(),
+        "created_by": user.created_by,
+        "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+    }
+
+
+@app.post("/auth/login")
+@limiter.limit("5/minute")
+def login(
+    request: Request,
+    payload: LoginRequest,
+    users: UserService = Depends(get_user_service),
+    settings: Settings = Depends(get_settings),
+):
+    user = users.authenticate(payload.username, payload.password)
+
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    token = create_access_token(
+        user.id, user.role, settings.jwt_secret, settings.jwt_algorithm, settings.jwt_expire_minutes
+    )
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "expires_in_minutes": settings.jwt_expire_minutes,
+        "user": _user_out(user),
+    }
+
+
+@app.get("/auth/me")
+def me(
+    principal=Depends(get_principal),
+    users: UserService = Depends(get_user_service),
+):
+    user = users.get(principal.id)
+
+    # A caller authenticated via an API key (not a user account) has no
+    # matching User row - fall back to the principal itself for that case.
+    if user is None:
+        return {"id": principal.id, "username": principal.label, "role": principal.role}
+
+    return _user_out(user)
+
+
+@app.get("/auth/users")
+def list_users(
+    users: UserService = Depends(get_user_service),
+    principal=Depends(require_role("admin")),
+):
+    return {"users": [_user_out(user) for user in users.list_all()]}
+
+
+@app.post("/auth/users")
+@limiter.limit("20/minute")
+def create_user(
+    request: Request,
+    payload: UserCreate,
+    users: UserService = Depends(get_user_service),
+    principal=Depends(require_role("admin")),
+):
+    if users.username_exists(payload.username):
+        raise HTTPException(status_code=409, detail="Username already exists")
+
+    user = users.create(payload.username, payload.password, payload.role, created_by=principal.label)
+    return _user_out(user)
+
+
+@app.patch("/auth/users/{user_id}")
+@limiter.limit("20/minute")
+def update_user(
+    request: Request,
+    user_id: str,
+    payload: UserUpdate,
+    users: UserService = Depends(get_user_service),
+    principal=Depends(require_role("admin")),
+):
+    try:
+        user = users.update(
+            user_id, role=payload.role, is_active=payload.is_active, password=payload.password
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    return _user_out(user)
+
+
+@app.delete("/auth/users/{user_id}")
+@limiter.limit("20/minute")
+def delete_user(
+    request: Request,
+    user_id: str,
+    users: UserService = Depends(get_user_service),
+    principal=Depends(require_role("admin")),
+):
+    if user_id == principal.id:
+        raise HTTPException(status_code=400, detail="cannot delete your own account while logged in as it")
+
+    try:
+        deleted = users.delete(user_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="user not found")
+
+    return {"deleted": user_id}
+
+
 @app.get("/metrics")
 def metrics(principal=Depends(get_principal)):
     body, content_type = render_metrics()
     return Response(content=body, media_type=content_type)
+
+
+@app.get("/metrics/summary")
+def metrics_summary(
+    db: Session = Depends(get_db_session),
+    ingestion: IngestionService = Depends(get_ingestion_service),
+    dataset: DatasetService = Depends(get_dataset_service),
+    principal=Depends(require_role("viewer", "admin")),
+):
+    documents = ingestion.list_documents()
+
+    avg_retrieval_ms, avg_generation_ms = (
+        db.query(func.avg(QueryLog.retrieval_ms), func.avg(QueryLog.generation_ms))
+        .filter(QueryLog.status_code == 200)
+        .one()
+    )
+
+    return {
+        "documents": len(documents),
+        "chunks": sum(doc.chunk_count for doc in documents),
+        "eval_questions": len(dataset.list_all()),
+        "avg_retrieval_ms": avg_retrieval_ms,
+        "avg_generation_ms": avg_generation_ms,
+    }
 
 
 @app.post("/ask")
@@ -139,12 +288,16 @@ def ask(
 
     latency_ms = (time.perf_counter() - started) * 1000
 
+    timing = result.get("timing", {})
+
     db.add(
         QueryLog(
             question=payload.question,
             answer=result["answer"],
             contexts_count=len(result["contexts"]),
             latency_ms=latency_ms,
+            retrieval_ms=timing.get("retrieval_ms"),
+            generation_ms=timing.get("generation_ms"),
             caller=principal.label,
             status_code=200,
         )

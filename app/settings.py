@@ -23,6 +23,19 @@ class Settings(BaseSettings):
     admin_api_key: str
     viewer_api_key: str
 
+    # API keys (above) remain a valid auth path (service accounts, scripts,
+    # CI) - JWT login is an additional, additive path for real human users,
+    # not a replacement. Both resolve to the same Principal.
+    jwt_secret: str
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 8 * 60
+
+    initial_admin_username: str = "admin"
+    # If unset, bootstrap generates a random one-time password and logs it -
+    # never a hardcoded default, so a fresh deployment is never silently
+    # left with a guessable admin credential.
+    initial_admin_password: str | None = None
+
     max_upload_mb: int = 20
 
     log_level: str = "INFO"

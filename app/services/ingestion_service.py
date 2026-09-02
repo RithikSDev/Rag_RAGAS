@@ -9,7 +9,7 @@ from app.config import PipelineConfig
 from app.db_models import Document
 from app.ingestion.chunker import chunk_document
 from app.ingestion.embedder import Embedder
-from app.ingestion.loader import load_pdf
+from app.ingestion.loader import LOADERS, load_document
 from app.observability.metrics import ACTIVE_DOCUMENTS, INGESTION_COUNT, VECTOR_STORE_SIZE
 from app.retrieval.vector_store import VectorStore
 from app.security.uploads import generate_stored_filename, read_and_validate_upload
@@ -33,7 +33,7 @@ class IngestionService:
         self.documents_dir = Path(documents_dir)
 
     def ingest_file(self, path: Path, original_filename: str, sha256: str, file_size: int, caller: str) -> Document:
-        pages = load_pdf(str(path))
+        pages = load_document(str(path), original_filename)
         chunks = chunk_document(pages, self.config, self.embedder)
 
         # Document row is created *before* the chunks are written so each
@@ -77,7 +77,7 @@ class IngestionService:
     async def save_upload(self, file: UploadFile, max_upload_mb: int, caller: str) -> Document:
         raw_bytes, sha256 = await read_and_validate_upload(file, max_upload_mb)
 
-        stored_filename = generate_stored_filename()
+        stored_filename = generate_stored_filename(file.filename)
         path = self.documents_dir / stored_filename
         self.documents_dir.mkdir(parents=True, exist_ok=True)
         path.write_bytes(raw_bytes)
@@ -101,7 +101,7 @@ class IngestionService:
                 logger.warning("could not remove failed upload artifact", extra={"path": str(path)})
 
             raise HTTPException(
-                status_code=400, detail="Could not process file as a valid PDF"
+                status_code=400, detail="Could not process file as a valid document"
             ) from exc
 
     def rebuild_index(self, caller: str) -> list[Document]:
@@ -110,21 +110,22 @@ class IngestionService:
         self.db.commit()
 
         documents = []
+        doc_paths = (p for p in self.documents_dir.iterdir() if p.suffix.lower() in LOADERS)
 
-        for pdf_path in sorted(self.documents_dir.glob("*.pdf")):
-            raw_bytes = pdf_path.read_bytes()
+        for doc_path in sorted(doc_paths):
+            raw_bytes = doc_path.read_bytes()
             sha256 = hashlib.sha256(raw_bytes).hexdigest()
 
             try:
                 documents.append(
-                    self.ingest_file(pdf_path, pdf_path.name, sha256, len(raw_bytes), caller)
+                    self.ingest_file(doc_path, doc_path.name, sha256, len(raw_bytes), caller)
                 )
             except Exception as exc:
                 # One corrupt file on disk shouldn't take down a re-index of
                 # every other document - skip it and keep going.
                 logger.warning(
                     "skipping unparseable document during reindex",
-                    extra={"file": pdf_path.name, "error": str(exc)},
+                    extra={"file": doc_path.name, "error": str(exc)},
                 )
 
         return documents

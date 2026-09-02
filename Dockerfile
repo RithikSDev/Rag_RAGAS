@@ -2,15 +2,24 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+RUN apt-get update && apt-get install -y --no-install-recommends curl tesseract-ocr tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Pre-download the embedding model at build time so a cold container start
-# doesn't need HuggingFace Hub network access.
+# HF_HOME lives under /app (chowned to appuser below) rather than the default
+# /root - the pre-download RUN steps below run as root, but the app runs as
+# appuser at container start, and appuser has no access to /root's cache.
+# Without this, the "pre-download at build time" step is silently defeated:
+# every cold start re-downloads both models over the network.
+ENV HF_HOME=/app/.cache/huggingface
+
+# Pre-download the embedding + reranker models at build time so a cold
+# container start doesn't need HuggingFace Hub network access (and doesn't
+# blow past the healthcheck's start-period waiting on a runtime download).
 RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en-v1.5')"
+RUN python -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')"
 
 COPY app app
 COPY evaluation evaluation
