@@ -5,7 +5,12 @@ __pycache__/
 node_modules/
 frontend/dist/
 
-data/
+# data/documents is real seed content the Dockerfile bakes into the image
+# (COPY data/documents data/documents) to bootstrap a fresh demo volume -
+# everything else under data/ (the SQLite DB, the Qdrant store) stays
+# ignored, it's runtime state, not source.
+data/*
+!data/documents
 results/
 
 .env
