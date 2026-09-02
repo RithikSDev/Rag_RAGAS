@@ -13,6 +13,7 @@ from app.retrieval.retriever import Retriever
 from app.retrieval.vector_store import VectorStore
 from app.security.auth import seed_api_keys
 from app.services.ingestion_service import IngestionService
+from app.services.threshold_service import ThresholdService
 from app.settings import Settings
 from app.state import AppState
 
@@ -45,6 +46,7 @@ def build_app_state(settings: Settings) -> AppState:
     with session_factory() as db:
         seed_api_keys(db, settings.admin_api_key, settings.viewer_api_key)
         pipeline_config = _load_or_create_config(db)
+        ThresholdService(db).seed_defaults()
 
     embedder = Embedder()
     vector_store = VectorStore(path=settings.qdrant_path)

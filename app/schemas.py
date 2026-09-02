@@ -58,6 +58,38 @@ def validate_settings_merge(merged: dict) -> None:
         raise ValueError("chunk_overlap must be smaller than chunk_size")
 
 
+class MetricThresholdEntry(BaseModel):
+    good: float
+    warning: float
+
+    @field_validator("good", "warning")
+    @classmethod
+    def _in_range(cls, value):
+        if not (0 <= value <= 1):
+            raise ValueError("threshold values must be between 0 and 1")
+        return value
+
+    @model_validator(mode="after")
+    def _good_above_warning(self):
+        if self.good <= self.warning:
+            raise ValueError("good threshold must be greater than warning threshold")
+        return self
+
+
+class ThresholdsUpdate(BaseModel):
+    thresholds: dict[str, MetricThresholdEntry]
+
+    @field_validator("thresholds")
+    @classmethod
+    def _known_metrics_only(cls, value):
+        from app.services.threshold_service import KNOWN_METRICS
+
+        unknown = set(value) - set(KNOWN_METRICS)
+        if unknown:
+            raise ValueError(f"unknown metric(s): {sorted(unknown)}")
+        return value
+
+
 class DocumentOut(BaseModel):
     name: str
     chunks: int

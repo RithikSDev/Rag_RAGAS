@@ -20,16 +20,18 @@ from app.dependencies import (
     get_pipeline_config,
     get_principal,
     get_settings,
+    get_threshold_service,
     get_vector_store,
     require_role,
 )
 from app.observability.logging_config import setup_logging
 from app.observability.metrics import RAG_QUERY_COUNT, RAG_QUERY_LATENCY, render_metrics
 from app.observability.middleware import RequestContextMiddleware
-from app.schemas import Question, SettingsUpdate, validate_settings_merge
+from app.schemas import Question, SettingsUpdate, ThresholdsUpdate, validate_settings_merge
 from app.security.rate_limit import limiter
 from app.services.evaluation_service import EvaluationService
 from app.services.ingestion_service import IngestionService
+from app.services.threshold_service import ThresholdService
 from app.settings import Settings, get_settings_cached
 
 settings = get_settings_cached()
@@ -234,3 +236,26 @@ def update_settings(
         "config": config.to_dict(),
         "documents": [_document_out(doc) for doc in documents],
     }
+
+
+@app.get("/settings/thresholds")
+def get_thresholds(
+    thresholds: ThresholdService = Depends(get_threshold_service),
+    principal=Depends(require_role("viewer", "admin")),
+):
+    return {"thresholds": thresholds.get_all()}
+
+
+@app.post("/settings/thresholds")
+@limiter.limit("10/minute")
+def update_thresholds(
+    request: Request,
+    payload: ThresholdsUpdate,
+    thresholds: ThresholdService = Depends(get_threshold_service),
+    principal=Depends(require_role("admin")),
+):
+    updates = {
+        metric: {"good": entry.good, "warning": entry.warning}
+        for metric, entry in payload.thresholds.items()
+    }
+    return {"thresholds": thresholds.update(updates, updated_by=principal.label)}

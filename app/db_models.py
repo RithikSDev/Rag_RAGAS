@@ -90,6 +90,16 @@ class QueryLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+class MetricThreshold(Base):
+    __tablename__ = "metric_thresholds"
+
+    metric: Mapped[str] = mapped_column(String(32), primary_key=True)
+    good: Mapped[float] = mapped_column(Float, default=0.8)
+    warning: Mapped[float] = mapped_column(Float, default=0.5)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+    updated_by: Mapped[str] = mapped_column(String(64), default="system")
+
+
 class ApiKey(Base):
     __tablename__ = "api_keys"
 

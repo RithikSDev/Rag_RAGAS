@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.security.auth import Principal, resolve_principal
 from app.services.evaluation_service import EvaluationService
 from app.services.ingestion_service import IngestionService
+from app.services.threshold_service import ThresholdService
 from app.settings import Settings, get_settings_cached
 from app.state import AppState
 
@@ -83,3 +84,7 @@ def get_evaluation_service(
     app_state: AppState = Depends(get_app_state),
 ) -> EvaluationService:
     return EvaluationService(db, app_state.pipeline, app_state.pipeline_config)
+
+
+def get_threshold_service(db: Session = Depends(get_db_session)) -> ThresholdService:
+    return ThresholdService(db)

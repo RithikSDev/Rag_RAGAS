@@ -59,3 +59,19 @@ export function updateSettings(settings) {
     body: JSON.stringify(settings),
   })
 }
+
+export function getRagasRuns() {
+  return request('/ragas/runs')
+}
+
+export function getThresholds() {
+  return request('/settings/thresholds')
+}
+
+export function updateThresholds(thresholds) {
+  return request('/settings/thresholds', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ thresholds }),
+  })
+}
