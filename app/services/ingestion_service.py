@@ -35,10 +35,12 @@ class IngestionService:
     def ingest_file(self, path: Path, original_filename: str, sha256: str, file_size: int, caller: str) -> Document:
         pages = load_pdf(str(path))
         chunks = chunk_document(pages, self.config, self.embedder)
-        vectors = self.embedder.embed([chunk["text"] for chunk in chunks])
 
-        self.vector_store.add_documents(chunks, vectors)
-
+        # Document row is created *before* the chunks are written so each
+        # chunk's payload can be tagged with its real document_id (needed for
+        # per-document chunk browsing) - if the embed/index step below then
+        # fails, the compensating delete keeps the DB and vector store from
+        # drifting out of sync.
         document = Document(
             original_filename=original_filename,
             stored_filename=path.name,
@@ -55,6 +57,15 @@ class IngestionService:
         self.db.add(document)
         self.db.commit()
         self.db.refresh(document)
+
+        try:
+            tagged_chunks = [{**chunk, "document_id": document.id} for chunk in chunks]
+            vectors = self.embedder.embed([chunk["text"] for chunk in chunks])
+            self.vector_store.add_documents(tagged_chunks, vectors)
+        except Exception:
+            self.db.delete(document)
+            self.db.commit()
+            raise
 
         INGESTION_COUNT.inc()
         self._refresh_gauges()
@@ -120,6 +131,19 @@ class IngestionService:
 
     def list_documents(self) -> list[Document]:
         return self.db.query(Document).order_by(Document.ingested_at.desc()).all()
+
+    def get_document(self, document_id: str) -> Document | None:
+        return self.db.get(Document, document_id)
+
+    def get_chunks(self, document_id: str) -> list[dict]:
+        """Chunks for documents ingested before document_id-tagging existed
+        (or re-tagged docs pending a reindex) simply return empty - matches
+        the existing expectation that a chunking-config change requires a
+        reindex to take effect everywhere."""
+        return sorted(
+            self.vector_store.scroll_by_document_id(document_id),
+            key=lambda chunk: chunk.get("page", 0),
+        )
 
     def _refresh_gauges(self) -> None:
         ACTIVE_DOCUMENTS.set(self.db.query(Document).count())

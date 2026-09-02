@@ -85,6 +85,7 @@ app.add_middleware(
 
 def _document_out(document) -> dict:
     return {
+        "id": document.id,
         "name": document.original_filename,
         "chunks": document.chunk_count,
         "ingested_at": document.ingested_at.isoformat(),
@@ -180,6 +181,18 @@ def list_documents(
     principal=Depends(require_role("viewer", "admin")),
 ):
     return {"documents": [_document_out(doc) for doc in ingestion.list_documents()]}
+
+
+@app.get("/documents/{document_id}/chunks")
+def get_document_chunks(
+    document_id: str,
+    ingestion: IngestionService = Depends(get_ingestion_service),
+    principal=Depends(require_role("viewer", "admin")),
+):
+    if ingestion.get_document(document_id) is None:
+        raise HTTPException(status_code=404, detail="document not found")
+
+    return {"chunks": ingestion.get_chunks(document_id)}
 
 
 @app.post("/documents")

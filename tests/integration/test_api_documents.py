@@ -85,3 +85,61 @@ def test_upload_oversized_file_rejected(client, admin_headers):
     )
 
     assert response.status_code == 413
+
+
+def test_document_response_includes_id(client, admin_headers, valid_pdf_bytes):
+    response = client.post(
+        "/documents",
+        headers=admin_headers,
+        files={"file": ("handbook.pdf", valid_pdf_bytes, "application/pdf")},
+    )
+    assert response.json()["id"]
+
+
+def test_get_chunks_for_document(client, admin_headers, valid_pdf_bytes):
+    document = client.post(
+        "/documents",
+        headers=admin_headers,
+        files={"file": ("handbook.pdf", valid_pdf_bytes, "application/pdf")},
+    ).json()
+
+    response = client.get(f"/documents/{document['id']}/chunks", headers=admin_headers)
+
+    assert response.status_code == 200
+    chunks = response.json()["chunks"]
+    assert len(chunks) == document["chunks"]
+    assert all(chunk["document_id"] == document["id"] for chunk in chunks)
+
+
+def test_get_chunks_for_unknown_document_is_404(client, admin_headers):
+    response = client.get("/documents/does-not-exist/chunks", headers=admin_headers)
+    assert response.status_code == 404
+
+
+def test_chunks_are_scoped_to_their_own_document(client, admin_headers, valid_pdf_bytes):
+    import pymupdf
+
+    other_doc = pymupdf.open()
+    other_doc.new_page()
+    other_doc.new_page()
+    other_pdf_bytes = other_doc.tobytes()
+    other_doc.close()
+
+    first = client.post(
+        "/documents",
+        headers=admin_headers,
+        files={"file": ("first.pdf", valid_pdf_bytes, "application/pdf")},
+    ).json()
+    second = client.post(
+        "/documents",
+        headers=admin_headers,
+        files={"file": ("second.pdf", other_pdf_bytes, "application/pdf")},
+    ).json()
+
+    first_chunks = client.get(f"/documents/{first['id']}/chunks", headers=admin_headers).json()["chunks"]
+    second_chunks = client.get(f"/documents/{second['id']}/chunks", headers=admin_headers).json()["chunks"]
+
+    assert len(first_chunks) == first["chunks"]
+    assert len(second_chunks) == second["chunks"]
+    assert all(c["document_id"] == first["id"] for c in first_chunks)
+    assert all(c["document_id"] == second["id"] for c in second_chunks)

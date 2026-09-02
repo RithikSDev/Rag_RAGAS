@@ -1,7 +1,14 @@
 import uuid
 
 from qdrant_client import QdrantClient
-from qdrant_client.models import PointStruct, VectorParams, Distance
+from qdrant_client.models import (
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointStruct,
+    VectorParams,
+    Distance,
+)
 
 
 class VectorStore:
@@ -66,6 +73,30 @@ class VectorStore:
         while True:
             batch, offset = self.client.scroll(
                 collection_name=self.collection_name,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            records.extend({"id": record.id, **record.payload} for record in batch)
+
+            if offset is None:
+                break
+
+        return records
+
+    def scroll_by_document_id(self, document_id: str) -> list[dict]:
+        records = []
+        offset = None
+        scroll_filter = Filter(
+            must=[FieldCondition(key="document_id", match=MatchValue(value=document_id))]
+        )
+
+        while True:
+            batch, offset = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=scroll_filter,
                 limit=256,
                 offset=offset,
                 with_payload=True,

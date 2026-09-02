@@ -53,3 +53,35 @@ def test_add_documents_uses_unique_ids_across_calls():
 
     count = store.client.count(store.collection_name).count
     assert count == 2  # would be 1 if point IDs collided
+
+
+def test_scroll_all_returns_every_point_with_id():
+    store = VectorStore()
+    store.add_documents([{"text": "a", "page": 1}, {"text": "b", "page": 2}], _fake_vectors(2))
+
+    records = store.scroll_all()
+
+    assert {r["text"] for r in records} == {"a", "b"}
+    assert all("id" in r for r in records)
+
+
+def test_scroll_by_document_id_filters_correctly():
+    store = VectorStore()
+    store.add_documents(
+        [{"text": "doc1 chunk", "page": 1, "document_id": "doc-1"}], _fake_vectors(1)
+    )
+    store.add_documents(
+        [{"text": "doc2 chunk", "page": 1, "document_id": "doc-2"}], _fake_vectors(1)
+    )
+
+    records = store.scroll_by_document_id("doc-1")
+
+    assert len(records) == 1
+    assert records[0]["text"] == "doc1 chunk"
+
+
+def test_scroll_by_document_id_no_match_returns_empty():
+    store = VectorStore()
+    store.add_documents([{"text": "a", "page": 1, "document_id": "doc-1"}], _fake_vectors(1))
+
+    assert store.scroll_by_document_id("does-not-exist") == []
