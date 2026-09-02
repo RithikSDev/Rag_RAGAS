@@ -4,7 +4,9 @@ from fastapi import Depends, Header, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.security.auth import Principal, resolve_principal
+from app.services.dataset_service import DatasetService
 from app.services.evaluation_service import EvaluationService
+from app.services.hybrid_retrieval_service import HybridRetrievalService
 from app.services.ingestion_service import IngestionService
 from app.services.threshold_service import ThresholdService
 from app.settings import Settings, get_settings_cached
@@ -79,12 +81,23 @@ def get_ingestion_service(
     )
 
 
+def get_dataset_service(db: Session = Depends(get_db_session)) -> DatasetService:
+    return DatasetService(db)
+
+
 def get_evaluation_service(
     db: Session = Depends(get_db_session),
     app_state: AppState = Depends(get_app_state),
+    dataset_service: DatasetService = Depends(get_dataset_service),
 ) -> EvaluationService:
-    return EvaluationService(db, app_state.pipeline, app_state.pipeline_config)
+    return EvaluationService(db, app_state.pipeline, app_state.pipeline_config, dataset_service)
 
 
 def get_threshold_service(db: Session = Depends(get_db_session)) -> ThresholdService:
     return ThresholdService(db)
+
+
+def get_hybrid_retrieval_service(
+    app_state: AppState = Depends(get_app_state),
+) -> HybridRetrievalService:
+    return HybridRetrievalService(app_state.retriever, app_state.vector_store, app_state.reranker)

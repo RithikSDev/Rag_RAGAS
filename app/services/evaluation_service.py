@@ -6,19 +6,34 @@ from app.config import PipelineConfig
 from app.db_models import EvaluationResult, EvaluationRun
 from app.observability.metrics import EVALUATION_RUNS
 from app.rag_pipeline import RAGPipeline
+from app.services.dataset_service import DatasetService
 from evaluation.run_evaluation import run_evaluation
 
 
 class EvaluationService:
-    def __init__(self, db: Session, pipeline: RAGPipeline, config: PipelineConfig):
+    def __init__(
+        self,
+        db: Session,
+        pipeline: RAGPipeline,
+        config: PipelineConfig,
+        dataset_service: DatasetService,
+    ):
         self.db = db
         self.pipeline = pipeline
         self.config = config
+        self.dataset_service = dataset_service
 
     def run_and_record(self, caller: str, metrics_factory=None) -> dict:
         started = datetime.now(timezone.utc)
 
-        output = run_evaluation(self.pipeline, self.config, metrics_factory=metrics_factory)
+        questions = self.dataset_service.as_pipeline_input()
+
+        if not questions:
+            raise ValueError("no evaluation questions in the dataset")
+
+        output = run_evaluation(
+            self.pipeline, self.config, metrics_factory=metrics_factory, questions=questions
+        )
 
         run = EvaluationRun(
             started_at=started,

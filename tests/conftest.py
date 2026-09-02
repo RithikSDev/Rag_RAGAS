@@ -16,6 +16,7 @@ from app.security.rate_limit import limiter
 from app.settings import get_settings_cached
 from tests.fakes.fake_embedder import FakeEmbedder
 from tests.fakes.fake_generator import FakeGenerator
+from tests.fakes.fake_reranker import FakeReranker
 
 
 @pytest.fixture
@@ -34,6 +35,7 @@ def client(tmp_path, monkeypatch):
 
     monkeypatch.setattr(bootstrap_module, "Embedder", FakeEmbedder)
     monkeypatch.setattr(bootstrap_module, "Generator", lambda model=None: FakeGenerator(model))
+    monkeypatch.setattr(bootstrap_module, "Reranker", FakeReranker)
 
     # The rate limiter's storage is a process-wide singleton (module-level in
     # app.security.rate_limit), so without a reset here, quota consumed by one

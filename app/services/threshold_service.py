@@ -2,7 +2,14 @@ from sqlalchemy.orm import Session
 
 from app.db_models import MetricThreshold
 
-KNOWN_METRICS = ("faithfulness", "answer_relevancy", "context_precision", "context_recall")
+KNOWN_METRICS = (
+    "faithfulness",
+    "answer_relevancy",
+    "context_precision",
+    "context_recall",
+    "context_relevance",
+    "answer_correctness",
+)
 
 DEFAULT_GOOD = 0.8
 DEFAULT_WARNING = 0.5

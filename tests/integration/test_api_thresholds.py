@@ -9,6 +9,8 @@ def test_get_thresholds_returns_seeded_defaults(client, viewer_headers):
         "answer_relevancy",
         "context_precision",
         "context_recall",
+        "context_relevance",
+        "answer_correctness",
     }
 
 

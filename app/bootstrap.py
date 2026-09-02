@@ -9,9 +9,11 @@ from app.db_models import PipelineConfigState
 from app.generation.generator import Generator
 from app.ingestion.embedder import Embedder
 from app.rag_pipeline import RAGPipeline
+from app.retrieval.reranker import Reranker
 from app.retrieval.retriever import Retriever
 from app.retrieval.vector_store import VectorStore
 from app.security.auth import seed_api_keys
+from app.services.dataset_service import DatasetService
 from app.services.ingestion_service import IngestionService
 from app.services.threshold_service import ThresholdService
 from app.settings import Settings
@@ -48,10 +50,15 @@ def build_app_state(settings: Settings) -> AppState:
         pipeline_config = _load_or_create_config(db)
         ThresholdService(db).seed_defaults()
 
+        from evaluation.create_dataset import QUESTIONS
+
+        DatasetService(db).seed_defaults(QUESTIONS)
+
     embedder = Embedder()
     vector_store = VectorStore(path=settings.qdrant_path)
     retriever = Retriever(vector_store, embedder)
     generator = Generator(model=settings.anthropic_model)
+    reranker = Reranker()
     pipeline = RAGPipeline(retriever, generator, top_k=pipeline_config.top_k)
 
     documents_dir = Path(settings.documents_dir)
@@ -74,8 +81,10 @@ def build_app_state(settings: Settings) -> AppState:
         vector_store=vector_store,
         retriever=retriever,
         generator=generator,
+        reranker=reranker,
         pipeline=pipeline,
         pipeline_config=pipeline_config,
         documents_dir=str(documents_dir),
         max_upload_mb=settings.max_upload_mb,
+        running_tasks=set(),
     )

@@ -8,6 +8,7 @@ from app.config import PipelineConfig
 from app.generation.generator import Generator
 from app.ingestion.embedder import Embedder
 from app.rag_pipeline import RAGPipeline
+from app.retrieval.reranker import Reranker
 from app.retrieval.retriever import Retriever
 from app.retrieval.vector_store import VectorStore
 
@@ -20,7 +21,9 @@ class AppState:
     vector_store: VectorStore
     retriever: Retriever
     generator: Generator
+    reranker: Reranker
     pipeline: RAGPipeline
     pipeline_config: PipelineConfig
     documents_dir: str
     max_upload_mb: int
+    running_tasks: set

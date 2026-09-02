@@ -17,6 +17,6 @@ class Retriever:
         ).points
 
         return [
-            result.payload
+            {**result.payload, "id": result.id, "score": result.score}
             for result in results
         ]

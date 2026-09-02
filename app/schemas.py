@@ -90,6 +90,84 @@ class ThresholdsUpdate(BaseModel):
         return value
 
 
+class RetrievalDebugRequest(BaseModel):
+    query: str
+    top_k_initial: int = 50
+    top_k_final: int = 5
+    vector_weight: float = 0.7
+    bm25_weight: float = 0.3
+    use_reranker: bool = True
+
+    @field_validator("query")
+    @classmethod
+    def _non_empty_query(cls, value):
+        if not value.strip():
+            raise ValueError("query must not be empty")
+        return value
+
+    @field_validator("top_k_initial")
+    @classmethod
+    def _valid_top_k_initial(cls, value):
+        if not (1 <= value <= 200):
+            raise ValueError("top_k_initial must be between 1 and 200")
+        return value
+
+    @field_validator("top_k_final")
+    @classmethod
+    def _valid_top_k_final(cls, value):
+        if not (1 <= value <= 50):
+            raise ValueError("top_k_final must be between 1 and 50")
+        return value
+
+    @field_validator("vector_weight", "bm25_weight")
+    @classmethod
+    def _valid_weight(cls, value):
+        if not (0 <= value <= 1):
+            raise ValueError("weights must be between 0 and 1")
+        return value
+
+    @model_validator(mode="after")
+    def _top_k_final_within_initial(self):
+        if self.top_k_final > self.top_k_initial:
+            raise ValueError("top_k_final cannot exceed top_k_initial")
+        return self
+
+
+class EvalQuestionCreate(BaseModel):
+    user_input: str
+    reference: str
+
+    @field_validator("user_input", "reference")
+    @classmethod
+    def _non_empty(cls, value):
+        if not value.strip():
+            raise ValueError("must not be empty")
+        return value
+
+
+class EvalQuestionUpdate(BaseModel):
+    user_input: str | None = None
+    reference: str | None = None
+
+    @field_validator("user_input", "reference")
+    @classmethod
+    def _non_empty_if_given(cls, value):
+        if value is not None and not value.strip():
+            raise ValueError("must not be empty")
+        return value
+
+
+class EvalQuestionOut(BaseModel):
+    id: str
+    user_input: str
+    reference: str
+    source: str
+    created_at: datetime
+    created_by: str
+
+    model_config = {"from_attributes": True}
+
+
 class DocumentOut(BaseModel):
     name: str
     chunks: int

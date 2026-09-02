@@ -15,9 +15,11 @@ from dotenv import load_dotenv
 from ragas.embeddings import HuggingFaceEmbeddings
 from ragas.llms import llm_factory
 from ragas.metrics.collections import (
+    AnswerCorrectness,
     AnswerRelevancy,
     ContextPrecision,
     ContextRecall,
+    ContextRelevance,
     Faithfulness,
 )
 
@@ -45,4 +47,6 @@ def build_metrics(model: str = None):
         "answer_relevancy": AnswerRelevancy(llm=llm, embeddings=embeddings),
         "context_precision": ContextPrecision(llm=llm),
         "context_recall": ContextRecall(llm=llm),
+        "context_relevance": ContextRelevance(llm=llm),
+        "answer_correctness": AnswerCorrectness(llm=llm, embeddings=embeddings),
     }

@@ -22,9 +22,11 @@ def test_pipeline_config_persists_across_rebuilds(tmp_path, monkeypatch):
 
     from tests.fakes.fake_embedder import FakeEmbedder
     from tests.fakes.fake_generator import FakeGenerator
+    from tests.fakes.fake_reranker import FakeReranker
 
     monkeypatch.setattr(bootstrap_module, "Embedder", FakeEmbedder)
     monkeypatch.setattr(bootstrap_module, "Generator", lambda model=None: FakeGenerator(model))
+    monkeypatch.setattr(bootstrap_module, "Reranker", FakeReranker)
 
     settings = _settings(tmp_path)
 
@@ -55,9 +57,11 @@ def test_bootstrap_skips_ingestion_when_documents_already_exist(tmp_path, monkey
 
     from tests.fakes.fake_embedder import FakeEmbedder
     from tests.fakes.fake_generator import FakeGenerator
+    from tests.fakes.fake_reranker import FakeReranker
 
     monkeypatch.setattr(bootstrap_module, "Embedder", FakeEmbedder)
     monkeypatch.setattr(bootstrap_module, "Generator", lambda model=None: FakeGenerator(model))
+    monkeypatch.setattr(bootstrap_module, "Reranker", FakeReranker)
 
     settings = _settings(tmp_path)
     os.makedirs(settings.documents_dir, exist_ok=True)

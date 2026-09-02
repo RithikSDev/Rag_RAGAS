@@ -53,11 +53,12 @@ def ingest(directory: str, vector_store: VectorStore, embedder: Embedder) -> Non
         vector_store.add_documents(chunks, vectors)
 
 
-def build_dataset_from_pipeline(pipeline) -> list[dict]:
+def build_dataset_from_pipeline(pipeline, questions: list[dict] | None = None) -> list[dict]:
 
+    questions = QUESTIONS if questions is None else questions
     evaluation_data = []
 
-    for item in QUESTIONS:
+    for item in questions:
         result = pipeline.run(item["user_input"])
 
         evaluation_data.append(

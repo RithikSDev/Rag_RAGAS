@@ -76,6 +76,17 @@ class EvaluationResult(Base):
     run: Mapped[EvaluationRun] = relationship(back_populates="results")
 
 
+class EvalQuestion(Base):
+    __tablename__ = "eval_questions"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_uuid)
+    user_input: Mapped[str] = mapped_column(Text)
+    reference: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(16), default="manual")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+
+
 class QueryLog(Base):
     __tablename__ = "query_log"
 

@@ -55,3 +55,26 @@ class VectorStore:
             collection_name=self.collection_name,
             points=points,
         )
+
+    def scroll_all(self) -> list[dict]:
+        """Enumerates every point's id + payload. Used to build the BM25 index -
+        fine at this corpus scale; would need a persistent index for a large one."""
+
+        records = []
+        offset = None
+
+        while True:
+            batch, offset = self.client.scroll(
+                collection_name=self.collection_name,
+                limit=256,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            records.extend({"id": record.id, **record.payload} for record in batch)
+
+            if offset is None:
+                break
+
+        return records

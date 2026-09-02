@@ -11,6 +11,8 @@ METRIC_INPUTS = {
     "answer_relevancy": ["user_input", "response"],
     "context_precision": ["user_input", "reference", "retrieved_contexts"],
     "context_recall": ["user_input", "retrieved_contexts", "reference"],
+    "context_relevance": ["user_input", "retrieved_contexts"],
+    "answer_correctness": ["user_input", "response", "reference"],
 }
 
 logger = logging.getLogger("app.evaluation")
@@ -32,17 +34,18 @@ def score_sample(sample: dict, metrics: dict) -> dict:
     return scores
 
 
-def run_evaluation(pipeline=None, config=None, metrics_factory=None) -> dict:
+def run_evaluation(pipeline=None, config=None, metrics_factory=None, questions=None) -> dict:
     """Pure function: scores an eval dataset with RAGAS and returns the result
     dict. No file I/O - the caller (EvaluationService) is responsible for
     persisting the output. If `pipeline` is given, the dataset is regenerated
-    live against it; otherwise falls back to the flat-file fixture for
+    live against it (using `questions` if given, else the CLI's hardcoded
+    fixture list); otherwise falls back to the flat-file fixture for
     standalone/CLI use."""
 
     if pipeline is not None:
         from evaluation.create_dataset import build_dataset_from_pipeline
 
-        dataset = build_dataset_from_pipeline(pipeline)
+        dataset = build_dataset_from_pipeline(pipeline, questions)
     else:
         dataset = json.loads(DATASET_PATH.read_text())
 

@@ -13,8 +13,10 @@ from sqlalchemy.orm import Session
 from app.bootstrap import build_app_state
 from app.db_models import PipelineConfigState, QueryLog
 from app.dependencies import (
+    get_dataset_service,
     get_db_session,
     get_evaluation_service,
+    get_hybrid_retrieval_service,
     get_ingestion_service,
     get_pipeline,
     get_pipeline_config,
@@ -27,9 +29,19 @@ from app.dependencies import (
 from app.observability.logging_config import setup_logging
 from app.observability.metrics import RAG_QUERY_COUNT, RAG_QUERY_LATENCY, render_metrics
 from app.observability.middleware import RequestContextMiddleware
-from app.schemas import Question, SettingsUpdate, ThresholdsUpdate, validate_settings_merge
+from app.schemas import (
+    EvalQuestionCreate,
+    EvalQuestionUpdate,
+    Question,
+    RetrievalDebugRequest,
+    SettingsUpdate,
+    ThresholdsUpdate,
+    validate_settings_merge,
+)
 from app.security.rate_limit import limiter
+from app.services.dataset_service import DatasetService, parse_import_rows
 from app.services.evaluation_service import EvaluationService
+from app.services.hybrid_retrieval_service import HybridRetrievalService
 from app.services.ingestion_service import IngestionService
 from app.services.threshold_service import ThresholdService
 from app.settings import Settings, get_settings_cached
@@ -141,6 +153,24 @@ def ask(
     RAG_QUERY_LATENCY.observe(latency_ms / 1000)
 
     return result
+
+
+@app.post("/retrieval/debug")
+@limiter.limit("10/minute")
+def retrieval_debug(
+    request: Request,
+    payload: RetrievalDebugRequest,
+    hybrid: HybridRetrievalService = Depends(get_hybrid_retrieval_service),
+    principal=Depends(require_role("viewer", "admin")),
+):
+    return hybrid.debug_search(
+        payload.query,
+        top_k_initial=payload.top_k_initial,
+        top_k_final=payload.top_k_final,
+        vector_weight=payload.vector_weight,
+        bm25_weight=payload.bm25_weight,
+        use_reranker=payload.use_reranker,
+    )
 
 
 @app.get("/documents")
@@ -259,3 +289,93 @@ def update_thresholds(
         for metric, entry in payload.thresholds.items()
     }
     return {"thresholds": thresholds.update(updates, updated_by=principal.label)}
+
+
+def _question_out(question) -> dict:
+    return {
+        "id": question.id,
+        "user_input": question.user_input,
+        "reference": question.reference,
+        "source": question.source,
+        "created_at": question.created_at.isoformat(),
+        "created_by": question.created_by,
+    }
+
+
+@app.get("/dataset")
+def list_dataset(
+    dataset: DatasetService = Depends(get_dataset_service),
+    principal=Depends(require_role("viewer", "admin")),
+):
+    return {"questions": [_question_out(q) for q in dataset.list_all()]}
+
+
+@app.post("/dataset")
+@limiter.limit("20/minute")
+def create_dataset_question(
+    request: Request,
+    payload: EvalQuestionCreate,
+    dataset: DatasetService = Depends(get_dataset_service),
+    principal=Depends(require_role("admin")),
+):
+    question = dataset.create(payload.user_input, payload.reference, created_by=principal.label)
+    return _question_out(question)
+
+
+@app.put("/dataset/{question_id}")
+@limiter.limit("20/minute")
+def update_dataset_question(
+    request: Request,
+    question_id: str,
+    payload: EvalQuestionUpdate,
+    dataset: DatasetService = Depends(get_dataset_service),
+    principal=Depends(require_role("admin")),
+):
+    question = dataset.update(question_id, payload.user_input, payload.reference)
+
+    if question is None:
+        raise HTTPException(status_code=404, detail="question not found")
+
+    return _question_out(question)
+
+
+@app.delete("/dataset/{question_id}")
+@limiter.limit("20/minute")
+def delete_dataset_question(
+    request: Request,
+    question_id: str,
+    dataset: DatasetService = Depends(get_dataset_service),
+    principal=Depends(require_role("admin")),
+):
+    if not dataset.delete(question_id):
+        raise HTTPException(status_code=404, detail="question not found")
+
+    return {"deleted": question_id}
+
+
+@app.post("/dataset/import")
+@limiter.limit("5/minute")
+async def import_dataset(
+    request: Request,
+    file: UploadFile = File(...),
+    dataset: DatasetService = Depends(get_dataset_service),
+    settings: Settings = Depends(get_settings),
+    principal=Depends(require_role("admin")),
+):
+    content = await file.read()
+
+    if len(content) > settings.max_upload_mb * 1024 * 1024:
+        raise HTTPException(status_code=413, detail=f"File exceeds {settings.max_upload_mb}MB limit")
+
+    try:
+        # json.JSONDecodeError subclasses ValueError, so this also covers malformed JSON.
+        rows = parse_import_rows(file.filename or "", content)
+    except (ValueError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=400, detail=f"Could not parse import file: {exc}") from exc
+
+    if not rows:
+        raise HTTPException(status_code=400, detail="No valid rows found (need user_input + reference columns)")
+
+    created = dataset.bulk_import(rows, created_by=principal.label)
+
+    return {"imported": len(created), "questions": [_question_out(q) for q in created]}
