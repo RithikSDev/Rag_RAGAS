@@ -1,15 +1,18 @@
 import { useEffect, useState } from 'react'
 import PipelineTrace from '../components/PipelineTrace'
+import UsersPanel from '../components/UsersPanel'
 import { getSettings, updateSettings } from '../lib/api'
+import { notify } from '../lib/toastStore'
 
 const STAGES = ['Update config', 'Re-chunk documents', 'Re-embed', 'Rebuild index']
 
-function SettingsView({ onDocumentsChanged }) {
+function SettingsView({ onDocumentsChanged, currentUser }) {
   const [form, setForm] = useState(null)
   const [loading, setLoading] = useState(true)
   const [applyStatus, setApplyStatus] = useState('idle')
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
+  const [showUsers, setShowUsers] = useState(false)
 
   async function load() {
     setLoading(true)
@@ -43,6 +46,7 @@ function SettingsView({ onDocumentsChanged }) {
       setResult(response.documents)
       onDocumentsChanged?.(response.documents.length)
       setApplyStatus('done')
+      notify(`Configuration applied — ${response.documents.length} document(s) re-indexed`)
     } catch (err) {
       setError(err.message)
       setApplyStatus('idle')
@@ -71,10 +75,19 @@ function SettingsView({ onDocumentsChanged }) {
           <h1>Settings</h1>
           <p>Tune retrieval and chunking, then re-run evaluation to trace the effect on RAGAS.</p>
         </div>
-        <button type="button" className="primary-button" onClick={handleApply} disabled={applyStatus === 'running'}>
-          {applyStatus === 'running' ? 'Applying…' : 'Apply & re-index'}
-        </button>
+        <div className="view-header-actions">
+          {currentUser?.role === 'admin' && (
+            <button type="button" className="secondary-button" onClick={() => setShowUsers((prev) => !prev)}>
+              {showUsers ? 'Hide users' : 'Manage users'}
+            </button>
+          )}
+          <button type="button" className="primary-button" onClick={handleApply} disabled={applyStatus === 'running'}>
+            {applyStatus === 'running' ? 'Applying…' : 'Apply & re-index'}
+          </button>
+        </div>
       </div>
+
+      {showUsers && currentUser?.role === 'admin' && <UsersPanel currentUserId={currentUser.id} />}
 
       <div className="settings-form">
         <div className="field-group">

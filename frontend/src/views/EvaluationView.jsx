@@ -1,12 +1,22 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import DiagnosticPanel from '../components/DiagnosticPanel'
 import ThresholdsPanel from '../components/ThresholdsPanel'
-import { getRagasRuns, getRagasScores, getThresholds, runEvaluation } from '../lib/api'
+import {
+  getEvaluationProgress,
+  getRagasRuns,
+  getRagasScores,
+  getThresholds,
+  runEvaluation,
+} from '../lib/api'
+import { notify } from '../lib/toastStore'
 
 const METRIC_LABELS = {
   faithfulness: 'Faithfulness',
   answer_relevancy: 'Answer Relevancy',
   context_precision: 'Context Precision',
   context_recall: 'Context Recall',
+  context_relevance: 'Context Relevance',
+  answer_correctness: 'Answer Correctness',
 }
 
 const BAND_LABELS = { good: 'Good', warning: 'Needs review', critical: 'Poor' }
@@ -26,15 +36,19 @@ function formatTimestamp(value) {
   return new Date(value).toLocaleString()
 }
 
-function EvaluationView() {
+function EvaluationView({ onNavigate }) {
   const [data, setData] = useState(null)
   const [thresholds, setThresholds] = useState({})
   const [runs, setRuns] = useState([])
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
+  const [progress, setProgress] = useState(null)
   const [error, setError] = useState(null)
   const [openIndex, setOpenIndex] = useState(null)
   const [showThresholds, setShowThresholds] = useState(false)
+  const [focusedMetric, setFocusedMetric] = useState(null)
+  const cancelledRef = useRef(false)
+  const pollTimeoutRef = useRef(null)
 
   async function loadThresholds() {
     try {
@@ -70,26 +84,81 @@ function EvaluationView() {
     loadRuns()
   }
 
+  useEffect(() => {
+    load()
+
+    return () => {
+      cancelledRef.current = true
+      clearTimeout(pollTimeoutRef.current)
+    }
+  }, [])
+
+  function pollProgress(runId) {
+    return new Promise((resolve, reject) => {
+      const poll = async () => {
+        if (cancelledRef.current) {
+          resolve()
+          return
+        }
+
+        try {
+          const snapshot = await getEvaluationProgress(runId)
+          if (cancelledRef.current) {
+            resolve()
+            return
+          }
+
+          setProgress(snapshot)
+
+          if (snapshot.status === 'running') {
+            pollTimeoutRef.current = setTimeout(poll, 300)
+          } else if (snapshot.status === 'completed') {
+            resolve()
+          } else {
+            reject(new Error(snapshot.error_message || 'Evaluation run failed'))
+          }
+        } catch (err) {
+          reject(err)
+        }
+      }
+
+      poll()
+    })
+  }
+
   async function handleRun() {
     setRunning(true)
     setError(null)
+    setProgress(null)
+    setFocusedMetric(null)
 
     try {
-      setData(await runEvaluation())
-      loadRuns()
+      const { run_id } = await runEvaluation()
+      await pollProgress(run_id)
+
+      if (!cancelledRef.current) {
+        setData(await getRagasScores())
+        loadRuns()
+        notify('Evaluation completed')
+      }
     } catch (err) {
       setError(err.message)
     } finally {
-      setRunning(false)
+      if (!cancelledRef.current) {
+        setRunning(false)
+        setProgress(null)
+      }
     }
   }
 
-  useEffect(() => {
-    load()
-  }, [])
-
   const hasResults = data?.results?.length > 0
   const cfg = data?.config
+  const focusedResults = focusedMetric
+    ? (data?.results ?? []).filter(
+        (sample) => band(sample.scores[focusedMetric].value, thresholds[focusedMetric]).key !== 'good'
+      )
+    : []
+  const rowTemplate = data?.metrics ? `2fr repeat(${data.metrics.length}, 0.9fr)` : undefined
 
   return (
     <div className="view">
@@ -111,6 +180,29 @@ function EvaluationView() {
           </button>
         </div>
       </div>
+
+      {running && (
+        <div className="eval-progress">
+          <div className="eval-progress-bar">
+            <div
+              className="eval-progress-fill"
+              style={{
+                width: progress?.total_questions
+                  ? `${Math.round((progress.completed_questions / progress.total_questions) * 100)}%`
+                  : '4%',
+              }}
+            />
+          </div>
+          <div className="eval-progress-meta">
+            <span>
+              {progress ? `${progress.completed_questions} / ${progress.total_questions} questions` : 'Starting…'}
+            </span>
+            {progress?.current_question && (
+              <span className="eval-progress-current">scoring: {progress.current_question}</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {error && <div className="error">{error}</div>}
 
@@ -142,13 +234,19 @@ function EvaluationView() {
             </div>
           )}
 
-          <div className="kpi-row">
+          <div className="kpi-row kpi-row-six">
             {data.metrics.map((name) => {
               const value = data.average[name]
               const { key, label } = band(value, thresholds[name])
 
               return (
-                <div className="kpi-tile" key={name}>
+                <button
+                  type="button"
+                  className="kpi-tile kpi-tile-button"
+                  key={name}
+                  onClick={() => setFocusedMetric(focusedMetric === name ? null : name)}
+                  aria-pressed={focusedMetric === name}
+                >
                   <div className="kpi-tile-label">{METRIC_LABELS[name] ?? name}</div>
                   <div className="kpi-tile-value">{formatScore(value)}</div>
                   <div className="meter">
@@ -158,13 +256,49 @@ function EvaluationView() {
                     <span className="status-dot-sm" />
                     {label}
                   </div>
-                </div>
+                </button>
               )
             })}
           </div>
 
+          <DiagnosticPanel
+            metrics={data.metrics}
+            average={data.average}
+            thresholds={thresholds}
+            onNavigate={onNavigate}
+          />
+
+          {focusedMetric && (
+            <div className="focused-results">
+              <div className="section-heading">
+                <h2>Failed questions — {METRIC_LABELS[focusedMetric] ?? focusedMetric}</h2>
+                <button type="button" className="link-button" onClick={() => setFocusedMetric(null)}>
+                  Clear filter
+                </button>
+              </div>
+
+              {focusedResults.length === 0 ? (
+                <p className="empty-state-hint">No questions fell below the target threshold for this metric.</p>
+              ) : (
+                focusedResults.map((sample, index) => (
+                  <div className="failed-question-card" key={index}>
+                    <div className="failed-question-score">
+                      {formatScore(sample.scores[focusedMetric].value)}
+                    </div>
+                    <div>
+                      <p className="failed-question-text">{sample.user_input}</p>
+                      {sample.scores[focusedMetric].reason && (
+                        <p className="failed-question-reason">{sample.scores[focusedMetric].reason}</p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
           <div className="results-table">
-            <div className="results-row results-head">
+            <div className="results-row results-head" style={{ gridTemplateColumns: rowTemplate }}>
               <span>Question</span>
               {data.metrics.map((name) => (
                 <span key={name}>{METRIC_LABELS[name] ?? name}</span>
@@ -176,6 +310,7 @@ function EvaluationView() {
                 <button
                   type="button"
                   className="results-row results-row-button"
+                  style={{ gridTemplateColumns: rowTemplate }}
                   onClick={() => setOpenIndex(openIndex === index ? null : index)}
                 >
                   <span className="results-question">{sample.user_input}</span>
@@ -209,29 +344,32 @@ function EvaluationView() {
             <div className="run-history">
               <h3>Run history</h3>
               <div className="run-history-table">
-                <div className="run-history-row run-history-head">
+                <div className="run-history-row run-history-head" style={{ gridTemplateColumns: rowTemplate }}>
                   <span>Run</span>
                   {data.metrics.map((name) => (
                     <span key={name}>{METRIC_LABELS[name] ?? name}</span>
                   ))}
                 </div>
-                {runs.map((run) => (
-                  <div className="run-history-row" key={run.id}>
-                    <span className="run-history-meta">
-                      {formatTimestamp(run.started_at)}
-                      <span className="run-history-by">by {run.triggered_by}</span>
-                    </span>
-                    {data.metrics.map((name) => {
-                      const value = run.average[name]
-                      const { key } = band(value, thresholds[name])
-                      return (
-                        <span key={name} className={`run-history-score status-${key}`}>
-                          {formatScore(value)}
-                        </span>
-                      )
-                    })}
-                  </div>
-                ))}
+                {runs
+                  .filter((run) => run.status === 'completed')
+                  .map((run) => (
+                    <div className="run-history-row" key={run.id} style={{ gridTemplateColumns: rowTemplate }}>
+                      <span className="run-history-meta">
+                        {run.label && <span className="run-history-label">{run.label}</span>}
+                        {formatTimestamp(run.started_at)}
+                        <span className="run-history-by">by {run.triggered_by}</span>
+                      </span>
+                      {data.metrics.map((name) => {
+                        const value = run.average?.[name]
+                        const { key } = band(value, thresholds[name])
+                        return (
+                          <span key={name} className={`run-history-score status-${key}`}>
+                            {value == null ? '—' : formatScore(value)}
+                          </span>
+                        )
+                      })}
+                    </div>
+                  ))}
               </div>
             </div>
           )}

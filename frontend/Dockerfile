@@ -8,11 +8,11 @@ RUN npm ci
 COPY . .
 
 # Vite env vars are baked in at build time, not read at container runtime -
-# they must come in as build args, not compose `environment:`.
+# they must come in as build args, not compose `environment:`. There's no
+# API key baked in anymore - the app authenticates real users via
+# POST /auth/login (JWT), not a static key shipped in the JS bundle.
 ARG VITE_API_URL=http://localhost:8000
-ARG VITE_API_KEY
 ENV VITE_API_URL=$VITE_API_URL
-ENV VITE_API_KEY=$VITE_API_KEY
 
 RUN npm run build
 

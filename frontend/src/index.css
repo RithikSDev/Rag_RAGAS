@@ -34,6 +34,23 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --surface-raised: #f0f0ed;
+  --border: #dedcd3;
+  --border-soft: rgba(0, 0, 0, 0.08);
+
+  --text-primary: #171715;
+  --text-secondary: #4a4a44;
+  --text-muted: #86847b;
+
+  --accent: #2568c4;
+  --accent-soft: rgba(37, 104, 196, 0.12);
+}
+
 * {
   box-sizing: border-box;
 }

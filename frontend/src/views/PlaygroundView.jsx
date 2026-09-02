@@ -5,7 +5,12 @@ import { askQuestion } from '../lib/api'
 
 const STAGES = ['Embed query', 'Retrieve context', 'Generate answer']
 
-function ChatView() {
+function formatMs(value) {
+  if (value == null) return '—'
+  return value < 1000 ? `${Math.round(value)} ms` : `${(value / 1000).toFixed(2)} s`
+}
+
+function PlaygroundView() {
   const [question, setQuestion] = useState('')
   const [pending, setPending] = useState(null)
   const [history, setHistory] = useState([])
@@ -25,10 +30,13 @@ function ChatView() {
     setError(null)
     setQuestion('')
 
+    const startedAt = performance.now()
+
     try {
       const result = await askQuestion(trimmed)
+      const totalMs = performance.now() - startedAt
 
-      setHistory((prev) => [...prev, result])
+      setHistory((prev) => [...prev, { ...result, totalMs }])
       setPending(null)
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'smooth' }), 50)
     } catch (err) {
@@ -41,8 +49,8 @@ function ChatView() {
     <div className="view chat-view">
       <div className="view-header">
         <div>
-          <h1>Chat</h1>
-          <p>Ask the pipeline a question about the ingested documents.</p>
+          <h1>RAG Playground</h1>
+          <p>Ask the pipeline a question and inspect exactly how the answer was produced.</p>
         </div>
       </div>
 
@@ -61,12 +69,23 @@ function ChatView() {
               <ReactMarkdown>{turn.answer}</ReactMarkdown>
             </div>
 
+            <div className="turn-timing">
+              <span>retrieval {formatMs(turn.timing?.retrieval_ms)}</span>
+              <span>generation {formatMs(turn.timing?.generation_ms)}</span>
+              <span>total {formatMs(turn.totalMs)}</span>
+            </div>
+
             {turn.contexts?.length > 0 && (
               <details className="sources">
                 <summary>{turn.contexts.length} retrieved chunk(s)</summary>
                 {turn.contexts.map((context, contextIndex) => (
                   <div className="source" key={contextIndex}>
-                    <span className="source-page">page {context.page}</span>
+                    <div className="source-meta">
+                      <span className="source-page">page {context.page}</span>
+                      {typeof context.score === 'number' && (
+                        <span className="source-score">vector score {context.score.toFixed(3)}</span>
+                      )}
+                    </div>
                     <p>{context.text}</p>
                   </div>
                 ))}
@@ -103,4 +122,4 @@ function ChatView() {
   )
 }
 
-export default ChatView
+export default PlaygroundView

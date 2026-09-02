@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getThresholds, updateThresholds } from '../lib/api'
+import { notify } from '../lib/toastStore'
 
 const METRIC_LABELS = {
   faithfulness: 'Faithfulness',
@@ -112,6 +113,7 @@ function ThresholdsPanel({ currentAverages, onSaved }) {
       setThresholds(response.thresholds)
       setDirty(false)
       onSaved?.(response.thresholds)
+      notify('Thresholds updated')
     } catch (err) {
       setError(err.message)
     } finally {
