@@ -8,6 +8,7 @@ import {
   getRagasScores,
   getSettings,
 } from '../lib/api'
+import { METRIC_DESCRIPTIONS } from '../lib/metricDescriptions'
 
 const METRIC_LABELS = {
   faithfulness: 'Faithfulness',
@@ -129,6 +130,7 @@ function OverviewView({ onNavigate }) {
               value={`${(latest.average[metric] * 100).toFixed(2)}%`.replace(/\.00%$/, '%')}
               trend={trendFor(metric)}
               onClick={() => onNavigate?.('evaluation')}
+              description={METRIC_DESCRIPTIONS[metric]}
             />
           ))}
         </div>

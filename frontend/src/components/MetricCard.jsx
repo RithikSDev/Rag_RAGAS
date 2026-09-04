@@ -1,10 +1,20 @@
-function MetricCard({ label, value, trend, onClick }) {
+function MetricCard({ label, value, trend, onClick, description }) {
   const clickable = typeof onClick === 'function'
   const hasTrend = typeof trend === 'number' && !Number.isNaN(trend)
 
   const content = (
     <>
-      <div className="metric-card-label">{label}</div>
+      <div className="metric-card-label">
+        {label}
+        {description && (
+          <span className="kpi-info" tabIndex={0} title={description} onClick={(event) => event.stopPropagation()}>
+            i
+            <span className="kpi-tooltip" role="tooltip">
+              {description}
+            </span>
+          </span>
+        )}
+      </div>
       <div className="metric-card-value">
         {value}
         {hasTrend && trend !== 0 && (

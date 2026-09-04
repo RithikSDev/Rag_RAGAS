@@ -8,6 +8,7 @@ import {
   getThresholds,
   runEvaluation,
 } from '../lib/api'
+import { METRIC_DESCRIPTIONS } from '../lib/metricDescriptions'
 import { notify } from '../lib/toastStore'
 
 const METRIC_LABELS = {
@@ -85,6 +86,7 @@ function EvaluationView({ onNavigate }) {
   }
 
   useEffect(() => {
+    cancelledRef.current = false
     load()
 
     return () => {
@@ -247,7 +249,20 @@ function EvaluationView({ onNavigate }) {
                   onClick={() => setFocusedMetric(focusedMetric === name ? null : name)}
                   aria-pressed={focusedMetric === name}
                 >
-                  <div className="kpi-tile-label">{METRIC_LABELS[name] ?? name}</div>
+                  <div className="kpi-tile-label">
+                    {METRIC_LABELS[name] ?? name}
+                    <span
+                      className="kpi-info"
+                      tabIndex={0}
+                      title={METRIC_DESCRIPTIONS[name]}
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      i
+                      <span className="kpi-tooltip" role="tooltip">
+                        {METRIC_DESCRIPTIONS[name]}
+                      </span>
+                    </span>
+                  </div>
                   <div className="kpi-tile-value">{formatScore(value)}</div>
                   <div className="meter">
                     <div className={`meter-fill meter-${key}`} style={{ width: formatScore(value) }} />
