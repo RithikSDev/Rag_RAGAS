@@ -96,7 +96,7 @@ def test_create_user_rejects_duplicate_username(client, admin_jwt_headers):
 
 def test_create_user_rejects_short_password(client, admin_jwt_headers):
     response = client.post(
-        "/auth/users", headers=admin_jwt_headers, json={"username": "alice", "password": "short", "role": "viewer"}
+        "/auth/users", headers=admin_jwt_headers, json={"username": "alice", "password": "abc", "role": "viewer"}
     )
     assert response.status_code == 422
 

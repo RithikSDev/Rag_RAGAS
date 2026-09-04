@@ -217,8 +217,8 @@ class UserCreate(BaseModel):
     @field_validator("password")
     @classmethod
     def _valid_password(cls, value):
-        if len(value) < 8:
-            raise ValueError("password must be at least 8 characters")
+        if len(value) < 4:
+            raise ValueError("password must be at least 4 characters")
         return value
 
     @field_validator("role")
@@ -244,8 +244,8 @@ class UserUpdate(BaseModel):
     @field_validator("password")
     @classmethod
     def _valid_password(cls, value):
-        if value is not None and len(value) < 8:
-            raise ValueError("password must be at least 8 characters")
+        if value is not None and len(value) < 4:
+            raise ValueError("password must be at least 4 characters")
         return value
 
 
